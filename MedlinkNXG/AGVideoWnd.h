@@ -57,7 +57,7 @@ private:
 	CBrush		m_brBack;
 };
 
-
+class VideoSource;
 class CAGVideoWnd : public CWnd
 {
 	DECLARE_DYNAMIC(CAGVideoWnd)
@@ -78,8 +78,10 @@ public:
 	void SetVideoStatsInfo(UINT nWidth, UINT nHeight, UINT nFps, UINT nBitrate, UINT nLossRate, UINT delay = 0);
 	void SetAudioStatsInfo(UINT nBitrate, UINT lossRate, UINT delay = 0);
 	void ShowStatsInfo(BOOL bShow, BOOL bIsRemote = TRUE);
-
+	void SetVideoSource(VideoSource *vs);
+	VideoSource* GetVideoSource();
 	void Reset();
+	void setActive(BOOL bActive);
 
 protected:
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
@@ -89,14 +91,20 @@ protected:
 	afx_msg void OnRButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg BOOL OnNcActivate(BOOL bActive);
 	DECLARE_MESSAGE_MAP()
 
 private:
 	CImageList		m_imgBackGround;
 	COLORREF		m_crBackColor;
-
 	CAGInfoWnd		m_wndInfo;
 	UINT			m_nUID;
+	VideoSource *m_videoSource;
+
+private:
+	BOOL m_bDragging;
+	CPoint m_ptDragStart;
 };
 
 class CapturedVideoSource;
@@ -130,7 +138,7 @@ public:
 	void prev_Frame();
 	void goto_Frame(int frame_index);
 	void display_freeze_frame(FreezeFrame *freezeframe);
-	void set_Main_View_State(MainViewState state);
+	void set_Interactive_State(InteractiveState state);
 	
 	vector<FreezeFrame>  get_FreezeFrames();
 	
@@ -141,7 +149,7 @@ protected:
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 
 private:
-	MainViewState m_main_view_state = MAIN_VIEW_NORMAL_STATE;
+	InteractiveState m_main_view_state = NO_INTERACTIVE;
 	int  current_display_frame_index = 0;
 	int  current_display_video_total_frame_number = 0;
 	bool m_isPlaying = FALSE;

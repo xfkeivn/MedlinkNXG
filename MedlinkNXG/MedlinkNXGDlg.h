@@ -9,7 +9,6 @@ class VideoSourceMgr;
 // CMedlinkNXGDlg 对话框
 class CMedlinkNXGDlg : public CDialogEx
 {
-// 构造
 public:
 	CMedlinkNXGDlg(CWnd* pParent = nullptr);	// 标准构造函数
 
@@ -21,12 +20,9 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 支持
 
-// 实现
 protected:
 	HICON m_hIcon;
 	VideoSourceMgr *pWndmgr;
-	
-	// 生成的消息映射函数
 	virtual BOOL OnInitDialog();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();

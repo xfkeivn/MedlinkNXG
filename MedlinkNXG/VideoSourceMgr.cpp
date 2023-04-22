@@ -13,6 +13,8 @@ AgoraRemoteVideoSource::AgoraRemoteVideoSource(VideoSourceMgr * mgr, int remoteU
 { 
 	m_wnd = new CAGVideoWnd();
 	m_wnd->Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, CRect(0, 0, 1, 1), mgr->getParentWindow(), remoteUserId);
+	m_wnd->SetVideoSource(this);
+	
 }
 
 VideoSourceMgr::VideoSourceMgr(CWnd* parentWndPtr)
@@ -22,7 +24,7 @@ VideoSourceMgr::VideoSourceMgr(CWnd* parentWndPtr)
 	m_captureMgr = new CAGDShowVideoCapture();
 	m_review_window.Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, CRect(0, 0, 1, 1), this->m_parentWndPtr,0);
 	//Default mode is SPEAKER_VIEW, But if there is only one it will fall back to one view mode.
-	m_viewMode = SPEAKER_VIEW;
+	m_viewMode = SPEAKER_ONE_VIEW;
 	init("b158865ce08b43f788e909aceda9fb7f", "100");
 }
 
@@ -51,64 +53,7 @@ VideoSource* VideoSourceMgr::add_agora_remote_video_source(int remoteUserId)
 	}
 	//create a new window for remote user and show it at current mode
 	AgoraRemoteVideoSource * remote_video_source = new AgoraRemoteVideoSource(this,remoteUserId);
-	this->m_video_sources.push_back(remote_video_source);
-	//if there is no video source yet
-	if (this->m_video_sources.size() == 1)
-	{
-		m_lastOneViewSource = remote_video_source;
-		m_viewMode = ONE_VIEW;
-	}
-	// if there is already video source
-	else
-	{	//if it is ONE_VIEW 
-		if (m_viewMode == ONE_VIEW)
-		{
-			if (m_lastOneViewSource == nullptr)
-				m_lastOneViewSource = remote_video_source;
-		}
-		else if (m_viewMode == TWO_H_VIEW)
-		{
-			if (m_lastTwoViewLeftSource == nullptr)
-			{
-				m_lastTwoViewLeftSource = remote_video_source;
-			}
-			else if (m_lastTwoViewRightSource == nullptr)
-			{
-				m_lastTwoViewRightSource = remote_video_source;
-			}
-			else
-			{
-				//No nothing
-			}
-			
-		}
-		else if (m_viewMode == TWO_V_VIEW)
-		{
-			if (m_lastTwoViewTopSource == nullptr)
-			{
-				m_lastTwoViewTopSource = remote_video_source;
-			}
-			else if (m_lastTwoViewBottomSource == nullptr)
-			{
-				m_lastTwoViewBottomSource = remote_video_source;
-			}
-			else
-			{
-				//No nothing
-			}
-
-		}
-		else if (m_viewMode == GALLERY_VIEW)
-		{
-			m_lastSortedGalleryViewVideoSource.push_back(remote_video_source);
-		}
-		else if (m_viewMode == SPEAKER_VIEW)
-		{
-			m_lastSortedSpeakerViewVideoSource.push_back(remote_video_source);
-		}
-	}
-
-	pack_windows();
+	addVideoSource(remote_video_source);
 	return remote_video_source;
 }
 
@@ -139,35 +84,20 @@ void VideoSourceMgr::remove_video_source(VideoSource* videosource)
 
 	videosource->ShowWindow(FALSE);
 	m_video_sources.erase(std::remove(m_video_sources.begin(), m_video_sources.end(), videosource), m_video_sources.end());
-	m_lastSortedSpeakerViewVideoSource.erase(std::remove(m_lastSortedSpeakerViewVideoSource.begin(), m_lastSortedSpeakerViewVideoSource.end(), videosource), m_lastSortedSpeakerViewVideoSource.end());
-	m_lastSortedGalleryViewVideoSource.erase(std::remove(m_lastSortedGalleryViewVideoSource.begin(), m_lastSortedGalleryViewVideoSource.end(), videosource), m_lastSortedGalleryViewVideoSource.end());
-
-	if (m_lastTwoViewBottomSource == videosource)
-		m_lastTwoViewBottomSource = nullptr;
-	if (m_lastOneViewSource == videosource)
-		m_lastOneViewSource = nullptr;
-	if (m_lastTwoViewTopSource == videosource)
-		m_lastTwoViewTopSource = nullptr;
-	if (m_lastTwoViewLeftSource == videosource)
-		m_lastTwoViewLeftSource = nullptr;
-	if (m_lastTwoViewRightSource == videosource)
-		m_lastTwoViewRightSource = nullptr;
-	if (m_lastSpeakerViewMainSource == videosource)
-		m_lastSpeakerViewMainSource = nullptr;
 	delete videosource;
-	pack_windows();
 
 }
 
 VideoSource* VideoSourceMgr::create_agora_local_video_source(int localUserId)
 {
-	AgoraLocalVideoSource * remote_video_source = new AgoraLocalVideoSource(this, localUserId);
-	this->m_video_sources.push_back(remote_video_source);
-	return remote_video_source;
+	m_local_video_source = new AgoraLocalVideoSource(this, localUserId);
+	addVideoSource(m_local_video_source);
+	return m_local_video_source;
 }
 void VideoSourceMgr::destory_agora_local_video_source()
 {
-
+	if(m_local_video_source!=nullptr)
+		remove_video_source(m_local_video_source);
 }
 
 
@@ -220,8 +150,7 @@ void VideoSourceMgr::init_custom_capture_video_source()
 		capturedVideoSource->getFrameRecorder()->add_observer(&test_dlg);
 		capturedVideoSource->videoInfoHeader = video_info_header;
 		capturedVideoSource->m_show_name = device_show_name;
-		m_video_sources.push_back(capturedVideoSource);
-		
+		addVideoSource(capturedVideoSource);
 		device_index++;
 		agora_user_id++;
 		itor++;
@@ -231,19 +160,8 @@ void VideoSourceMgr::init_custom_capture_video_source()
 	m_captureMgr->Start();
 	// the default layout is the speaker mode, but if there is only one, fall back to one view mode.
 	// in one view mode and speaker view, you can change to the recording and review state, other view mode cannot change to those states.
-	
-	m_main_view_state = MAIN_VIEW_NORMAL_STATE;
-	if (this->m_video_sources.size() == 1)
-	{
-		setOneViewAndSource(this->m_video_sources[0]);
-	}	
-	if (this->m_video_sources.size() >= 2) {
-		//default is speaker view
-		vector<VideoSource*> sub_views(this->m_video_sources.begin() + 1, this->m_video_sources.end());
-		
-		setSpeakerViewAndSource(this->m_video_sources[0], sub_views);
-	}
-
+	interactive_state = NO_INTERACTIVE;
+	pack_windows();
 	// This is the test dialog for debug, in the release mode, it will be the commands from the remote or the control from local
 	test_dlg.Create(IDD_DIALOG_CONTROL, this->m_parentWndPtr);
 	test_dlg.setVideoSourceMgr(this);
@@ -269,10 +187,105 @@ VideoSourceMgr::~VideoSourceMgr()
 
 void VideoSourceMgr::addVideoSource(VideoSource *vsPtr)
 {
-	m_video_sources.push_back(vsPtr);
-	
+	auto itor = std::find(m_video_sources.begin(), m_video_sources.end(), vsPtr);
+	if (itor == m_video_sources.end())
+	{
+		m_video_sources.push_back(vsPtr);
+	}
 }
 
+void VideoSourceMgr::push_back_to_subview(VideoSource* videosource)
+{
+	
+	videosource->setViewType(SUB_VIEW);
+
+}
+void VideoSourceMgr::drop_to_main_view(VideoSource* videsource, CRect* windowRectToDrop)
+{
+	// if there is no target window, it should be the initial status main window setting
+	if (windowRectToDrop != nullptr)
+	{
+		CRect rect = *windowRectToDrop;
+		vector<CRect>::iterator itor = m_main_window_rects.begin();
+		int target_index = 0;
+		bool hitted = false;
+		//For the main to main, the size of the window is the same so to make it dropable, we will deflat it
+		int deflat_x = rect.Width() / 2;
+		int deflat_y = rect.Height() / 2;
+		if(videsource->getViewType() == MAIN_VIEW)
+			rect.DeflateRect(deflat_x, deflat_y);
+		//Whether it is drop to a rect of main window
+		while (itor != m_main_window_rects.end())
+		{
+			CRect mainRect = *itor;
+			if (mainRect.left <= rect.left && mainRect.right >= rect.right && mainRect.top <= rect.top && mainRect.bottom >= rect.bottom)
+			{
+				hitted = true;
+				break;
+			}
+			target_index++;
+				itor++;
+		}
+		// if it is in a rect
+		if (hitted)
+		{
+			// set the index of this rect
+			vector<VideoSource*> main_views = get_main_views();
+			for (int i = 0; i < main_views.size(); i++)
+			{
+				VideoSource* vs = main_views[i];
+				
+				if (vs != videsource )
+				{
+					
+					if (vs->get_main_view_index() == target_index)
+					{
+						swap_2_views(vs, videsource);
+						videsource->set_main_view_index(target_index);
+						pack_windows();
+						return;
+					}
+				}
+				
+				else
+				{
+					
+				}
+			}
+			videsource->set_main_view_index(target_index);
+			videsource->setViewType(MAIN_VIEW);
+			pack_windows();
+		}
+		else
+		{
+			pack_windows();
+		}
+	
+	}
+}
+
+void VideoSourceMgr::swap_2_views(VideoSource *source, VideoSource* dest)
+{
+	//adjust the main and sub view vectors 
+	ViewType src_type = source->getViewType();
+	ViewType dest_type = dest->getViewType();
+	if (src_type == MAIN_VIEW && dest_type == MAIN_VIEW)
+	{
+		int src_index = source->get_main_view_index();
+		int dst_index = dest->get_main_view_index();
+		source->set_main_view_index(dst_index);
+		dest->set_main_view_index(src_index);
+	}
+
+
+	source->setViewType(dest_type);
+	dest->setViewType(src_type);
+	auto itor_src = std::find(m_video_sources.begin(), m_video_sources.end(), source);
+	auto itor_dst = std::find(m_video_sources.begin(), m_video_sources.end(), dest);
+	std::swap(itor_src, itor_dst);
+
+	
+}
 
 
 VideoMode VideoSourceMgr::getViewMode()
@@ -283,32 +296,148 @@ VideoMode VideoSourceMgr::getViewMode()
 void VideoSourceMgr::pack_windows()
 {
 	// when there is new video source added in all removed, this function will be called to adjust the window
-	RECT rect;
+	
 	if (m_parentWndPtr != nullptr)
 	{
-		m_parentWndPtr->GetClientRect(&rect);
+		RECT clientRect;
+		m_parentWndPtr->GetClientRect(&clientRect);
 
-		if (getViewMode() == ONE_VIEW)
+		int totoal_width = (clientRect.right - clientRect.left);
+		int total_height = (clientRect.bottom - clientRect.top);
+		int main_width = totoal_width;
+		int main_height = total_height;
+		// max to show 1+ 9 windows , more than 9 sliced the others.
+		hideAllWindows();
+		int sub_view_count = get_current_sub_view_count();
+		if (sub_view_count == 0)
+			sub_view_count = 1;
+		int sub_view_avg_width = totoal_width / sub_view_count;
+		int sub_view_width = sub_view_avg_width;
+		if (sub_view_avg_width >= this->sub_view_max_width)
 		{
-			setOneViewAndSource(this->m_lastOneViewSource);
+			sub_view_width = this->sub_view_max_width;
 		}
-		if (getViewMode() == TWO_H_VIEW)
+
+		int video_source_count = this->m_video_sources.size();
+		int x = 0;
+		int y = 0;
+		//int main_view_index = 0;
+		int sub_view_index = 0;
+
+		
+		for (int i = 0; i < video_source_count; i++)
 		{
-			setTwoViewHAndSource(this->m_lastTwoViewLeftSource, this->m_lastTwoViewRightSource);
+			VideoSource * vs = m_video_sources[i];
+			ViewType vt = vs->getViewType();
+
+			if (vt == MAIN_VIEW)
+			{
+				if (m_viewMode == SPEAKER_ONE_VIEW)
+				{
+					vs->MoveWindow(0, 0, main_width, main_height*h_percentage);
+					vs->ShowWindow(TRUE);
+				}
+				else if (m_viewMode == SPEAKER_TWO_VIEW)
+				{
+					
+					vs->MoveWindow(vs->get_main_view_index()*ceil(main_width / 2.0), 0, floor(main_width / 2.0), main_height*h_percentage);
+					vs->ShowWindow(TRUE);
+				}
+				else if (m_viewMode == SPEAKER_FOUR_VIEW)
+				{
+					int main_view_index = vs->get_main_view_index();
+					if (main_view_index % 2 == 0)
+					{
+						x = 0;
+					}
+					else
+					{
+						x = ceil(main_width / 2.0);
+					}
+					if (main_view_index < 2)
+					{
+						y = 0;
+					}
+					else
+					{
+						y = ceil(main_height*h_percentage / 2.0);
+					}
+					vs->MoveWindow(x, y, floor(main_width / 2.0), floor(main_height*h_percentage / 2.0));
+					vs->ShowWindow(TRUE);
+					//main_view_index++;
+				}
+
+			}
+			else
+			{
+				int y0 = int(h_percentage*total_height);
+				int sub_view_height = int((1 - h_percentage)*total_height);
+				vs->MoveWindow(sub_view_index*sub_view_width, y0, sub_view_width, sub_view_height);
+				vs->ShowWindow(TRUE);
+				sub_view_index++;
+			}
 		}
-		if (getViewMode() == TWO_V_VIEW)
+
+		m_main_window_rects.clear();
+		if (m_viewMode == SPEAKER_ONE_VIEW)
 		{
-			setTwoViewVAndSource(this->m_lastTwoViewTopSource, this->m_lastTwoViewBottomSource);
+			CRect rect = clientRect;
+			rect.bottom = h_percentage * rect.bottom;
+			m_main_window_rects.push_back(rect);
+
+		
 		}
-		if (getViewMode() == GALLERY_VIEW)
+		else if (m_viewMode == SPEAKER_TWO_VIEW)
 		{
-			setGalleryViewAndSource(m_lastSortedGalleryViewVideoSource);
+			CRect rect1 = clientRect;
+			CRect rect2 = clientRect;
+			rect1.right = rect1.right / 2;
+			rect1.bottom = h_percentage * rect1.bottom;
+
+			rect2.left = rect2.right / 2;
+			rect2.bottom = h_percentage * rect2.bottom;
+			m_main_window_rects.push_back(rect1);
+			m_main_window_rects.push_back(rect2);
 		}
-		if (getViewMode() == SPEAKER_VIEW)
+		else if (m_viewMode == SPEAKER_FOUR_VIEW)
 		{
-			setSpeakerViewAndSource(m_lastSpeakerViewMainSource, m_lastSortedSpeakerViewVideoSource);
+
+			CRect rect1 = clientRect;
+			CRect rect2 = clientRect;
+			CRect rect3 = clientRect;
+			CRect rect4 = clientRect;
+			rect1.right = rect1.right / 2;
+			rect1.bottom = h_percentage * rect1.bottom / 2;
+
+			rect2.left = rect2.right / 2;
+			rect2.bottom = h_percentage * rect2.bottom / 2;
+
+			rect3.right = rect3.right / 2;
+			rect3.top = h_percentage * rect3.bottom / 2;
+			rect3.bottom = h_percentage * rect3.bottom;
+
+			rect4.left = rect4.right / 2;
+			rect4.top = h_percentage * rect4.bottom / 2;
+			rect4.bottom = h_percentage * rect4.bottom;
+			m_main_window_rects.push_back(rect1);
+			m_main_window_rects.push_back(rect2);
+			m_main_window_rects.push_back(rect3);
+			m_main_window_rects.push_back(rect4);
+			
 		}
-	}
+
+
+
+
+
+
+
+
+
+
+		}
+
+		m_parentWndPtr->Invalidate();
 }
 bool VideoSourceMgr::isHost()
 {
@@ -319,313 +448,7 @@ void VideoSourceMgr::showVideoView(VideoSource * video_source_id)
 {
 
 }
-//Two view
-void VideoSourceMgr::setOneViewAndSource(VideoSource * video_source)
-{
-	if (video_source == nullptr)
-	{
-		return;
-	}
-	this->m_viewMode = ONE_VIEW;
-	RECT clientRect;
-	m_parentWndPtr->GetClientRect(&clientRect);
-	hideAllWindows();
 
-	if (m_main_view_state == MAIN_VIEW_NORMAL_STATE)
-	{
-		video_source->MoveWindow(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
-		video_source->ShowWindow(TRUE);
-	}
-	if (m_main_view_state != MAIN_VIEW_NORMAL_STATE)
-	{
-		m_review_window.MoveWindow(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
-		m_review_window.ShowWindow(TRUE);
-	}
-
-	this->m_lastOneViewSource = video_source;
-
-	//Get the recording or freeze frame source.
-	CapturedVideoSource* cvs = dynamic_cast<CapturedVideoSource*>(m_lastOneViewSource);
-	if (cvs != nullptr)
-	{
-		
-		m_review_window.set_Capture_Video_Source(cvs);
-	}
-
-}
-void VideoSourceMgr::setTwoViewHAndSource(VideoSource * video_source_left, VideoSource * video_source_right)
-{
-	hideAllWindows();
-	this->m_viewMode = TWO_H_VIEW;
-	RECT clientRect;
-	m_parentWndPtr->GetClientRect(&clientRect);
-	int width = clientRect.right - clientRect.left;
-	if (video_source_left != nullptr)
-	{
-		this->m_lastTwoViewLeftSource = video_source_left;
-		video_source_left->MoveWindow(0, 0, width/2-1, clientRect.bottom - clientRect.top);
-		video_source_left->ShowWindow(TRUE);
-	}
-	if (video_source_right != nullptr)
-	{
-		this->m_lastTwoViewRightSource = video_source_right;
-		video_source_right->MoveWindow(width/2+1, 0, width / 2 - 1, clientRect.bottom - clientRect.top);
-		video_source_right->ShowWindow(TRUE);
-	}
-	
-	
-}
-void VideoSourceMgr::setTwoViewVAndSource(VideoSource * video_source_top, VideoSource * video_source_bottom)
-{
-	hideAllWindows();
-	this->m_viewMode = TWO_V_VIEW;
-	RECT clientRect;
-	m_parentWndPtr->GetClientRect(&clientRect);
-	int heigth = clientRect.bottom - clientRect.top;
-	if (video_source_top != nullptr)
-	{
-		this->m_lastTwoViewTopSource = video_source_top;
-		video_source_top->MoveWindow(0, 0, clientRect.right - clientRect.left, heigth/2);
-		video_source_top->ShowWindow(TRUE);
-	}
-	if (video_source_bottom != nullptr)
-	{
-		this->m_lastTwoViewBottomSource = video_source_bottom;
-		video_source_bottom->MoveWindow(0, heigth / 2 - 1, clientRect.right - clientRect.left,heigth/2);
-		video_source_bottom->ShowWindow(TRUE);
-	}
-
-}
-
-//Gallery
-void VideoSourceMgr::setGalleryViewAndSource(vector<VideoSource *> sorted_video_sources_on_gallery)
-{
-	int total_video_source_num = sorted_video_sources_on_gallery.size();
-	RECT clientRect;
-	m_parentWndPtr->GetClientRect(&clientRect);
-	int width = clientRect.right - clientRect.left;
-	int heigth = clientRect.bottom - clientRect.top;
-	if (total_video_source_num == 0)
-	{
-		return;
-	}
-
-	if (total_video_source_num == 1)
-	{
-		setOneViewAndSource(sorted_video_sources_on_gallery[0]);
-		return;
-	}
-	if (total_video_source_num == 2)
-	{
-		setTwoViewHAndSource(sorted_video_sources_on_gallery[0], sorted_video_sources_on_gallery[1]);
-		return;
-	}
-
-	this->hideAllWindows();
-	this->m_viewMode = GALLERY_VIEW;
-	this->m_lastSortedGalleryViewVideoSource = sorted_video_sources_on_gallery;
-	if (total_video_source_num == 3 || total_video_source_num == 4)
-	{
-		// 4 
-		
-		for (int i = 0; i < total_video_source_num; i++)
-		{
-			VideoSource *vs = sorted_video_sources_on_gallery[i];
-			int col = i % 2;
-			int row = i / 2;
-			
-			int posx = col * width / 2;
-			int posy = row * heigth / 2;
-			vs->MoveWindow(posx, posy, width/2,heigth/2);
-			vs->ShowWindow(TRUE);
-		}
-		
-		return;
-	}
-	if (total_video_source_num == 5 || total_video_source_num == 6)
-	{
-		// 6 
-	
-		for (int i = 0; i < total_video_source_num; i++)
-		{
-			VideoSource *vs = sorted_video_sources_on_gallery[i];
-			int col = i % 3;
-			int row = i / 3;
-
-			int posx = col * width / 3;
-			int posy = row * heigth / 2;
-			vs->MoveWindow(posx, posy, width / 3, heigth / 2);
-			vs->ShowWindow(TRUE);
-		}
-		return;
-	}
-	if (total_video_source_num == 7 || total_video_source_num == 8 || total_video_source_num == 9)
-	{
-		// 9 
-		for (int i = 0; i < total_video_source_num; i++)
-		{
-			VideoSource *vs = sorted_video_sources_on_gallery[i];
-			int col = i % 3;
-			int row = i / 3;
-			int posx = col * width / 3;
-			int posy = row * heigth / 3;
-			vs->MoveWindow(posx, posy, width / 3, heigth / 3);
-			vs->ShowWindow(TRUE);
-		}
-		return;
-	}
-	if (total_video_source_num == 10 || total_video_source_num == 11 || total_video_source_num == 12)
-	{
-		// 12 
-	
-		RECT clientRect;
-		m_parentWndPtr->GetClientRect(&clientRect);
-		int width = clientRect.right - clientRect.left;
-		int heigth = clientRect.bottom - clientRect.top;
-		for (int i = 0; i < total_video_source_num; i++)
-		{
-			VideoSource *vs = sorted_video_sources_on_gallery[i];
-			int col = i % 4;
-			int row = i / 4;
-			int posx = col * width / 4;
-			int posy = row * heigth / 3;
-			vs->MoveWindow(posx, posy, width / 4, heigth / 3);
-			vs->ShowWindow(TRUE);
-		}
-	
-	}
-	if (total_video_source_num>=12)
-	{	// 16 
-	
-		for (int i = 0; i < min(total_video_source_num,16); i++)
-		{
-			VideoSource *vs = sorted_video_sources_on_gallery[i];
-			int col = i % 4;
-			int row = i / 4;
-
-			int posx = col * width / 4;
-			int posy = row * heigth / 4;
-			vs->MoveWindow(posx, posy, width / 4, heigth / 4);
-			vs->ShowWindow(TRUE);
-		}
-
-	}
-
-}
-//speaker view
-void VideoSourceMgr::setSpeakerViewAndSource(VideoSource *video_source_main, vector<VideoSource *> orgsorted_other_video_sources)
-{
-	RECT clientRect;
-	m_parentWndPtr->GetClientRect(&clientRect);
-	int width = (clientRect.right - clientRect.left);
-	int height = (clientRect.bottom - clientRect.top);
-	int main_width = 0;
-	int main_height = 0;
-	vector<VideoSource *> sorted_video_sources;
-	// max to show 1+ 9 windows , more than 9 sliced the others.
-	if (orgsorted_other_video_sources.size() > 9)
-	{
-		vector<VideoSource *> sliced(orgsorted_other_video_sources.begin(), orgsorted_other_video_sources.begin() + 9);
-		sorted_video_sources = sliced;
-	}
-	else
-	{
-		sorted_video_sources = orgsorted_other_video_sources;
-	}
-
-	
-	int size_view = sorted_video_sources.size();
-	//less than 4, then 
-	if (sorted_video_sources.size() ==0  )
-	{
-		setOneViewAndSource(video_source_main);
-		return;
-	}
-	m_lastSpeakerViewMainSource = video_source_main;
-	m_lastSortedSpeakerViewVideoSource = orgsorted_other_video_sources;
-	this->m_viewMode = SPEAKER_VIEW;
-	hideAllWindows();
-	if (size_view <= 4)
-	{
-		//show all the others on the right, the capture source at the top
-		int y = 0;
-		for (int i = 0; i < size_view; i++)
-		{
-			
-			if (sorted_video_sources[i] != video_source_main)
-			{
-				int x = (int)(h_percentage*width);
-				sorted_video_sources[i]->MoveWindow(x, y, (int)(width*(1- h_percentage)), (int)(height*0.2));
-				sorted_video_sources[i]->ShowWindow(TRUE);
-				y += int(height*(0.2));
-			}
-		}
-
-
-		m_lastSpeakerViewMainSource = video_source_main;
-		main_width = int(width*h_percentage);
-		main_height = int(height);
-		
-	
-	}
-	if (size_view >= 5)
-	{
-		int x = 0;
-		int y = 0;
-		for (int i = 0; i < size_view; i++)
-		{
-			
-			if ( i < 4 )
-			{
-				
-				int x0 = int(h_percentage*width);
-				sorted_video_sources[i]->MoveWindow(x0, y, int(width*0.2), int(height*0.2));
-				sorted_video_sources[i]->ShowWindow(TRUE);
-				y += int(height * 0.2);
-			}
-			else
-			{
-				int y0 = int(0.8*height);
-				sorted_video_sources[i]->MoveWindow(x, y0, int(width*0.2), int(height*0.2));
-				sorted_video_sources[i]->ShowWindow(TRUE);
-				x += int(width * 0.2);
-			}
-
-		}
-
-		//set the main window
-		m_lastSpeakerViewMainSource = video_source_main;
-		main_width = int(width*h_percentage);
-		main_height = int(height*v_percentage);
-		
-		CapturedVideoSource* cvs = dynamic_cast<CapturedVideoSource*>(m_lastSpeakerViewMainSource);
-		if (cvs != nullptr)
-		{
-			
-			m_review_window.set_Capture_Video_Source(cvs);
-		}
-
-	}
-
-	if (video_source_main != nullptr && m_main_view_state == MAIN_VIEW_NORMAL_STATE)
-	{
-		video_source_main->MoveWindow(0, 0, main_width, main_height);
-		video_source_main->ShowWindow(TRUE);
-
-	}
-
-	// for the review mode, also resize the window
-	if (m_main_view_state != MAIN_VIEW_NORMAL_STATE)
-	{
-		m_review_window.MoveWindow(0, 0, main_width, main_height);
-		m_review_window.ShowWindow(TRUE);
-	}
-		
-
-
-
-
-}
 
 CRect VideoSource::GetWndRect()
 {
@@ -633,13 +456,7 @@ CRect VideoSource::GetWndRect()
 	m_wnd->GetClientRect(&rect);
 	return rect;
 }
-void VideoSourceMgr::swapVideoSource(VideoSource *source, VideoSource* dest)
-{
-	CRect source_rect = source->GetWndRect();
-	CRect target_rect = dest->GetWndRect();
-	source->MoveWindow(target_rect.left, target_rect.top, target_rect.Width(), target_rect.Height());
-	  dest->MoveWindow(source_rect.left, source_rect.top, source_rect.Width(), source_rect.Height());
-}
+
 
 void VideoSourceMgr::hideAllWindows()
 {
@@ -678,6 +495,11 @@ void  VideoSource::ShowWindow(bool show)
 	m_wnd->ShowWindow(show);
 }
 
+void VideoSource::drop_to_main(CRect rect)
+{
+	this->m_video_source_mgr->drop_to_main_view(this, &rect);
+}
+
 
 VideoSource::~VideoSource()
 {
@@ -714,80 +536,56 @@ CapturedVideoSource::CapturedVideoSource(VideoSourceMgr * mgr, int agora_user_id
 {
 	m_wnd = new CapturedSourceVideoWnd();
 	m_wnd->Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, CRect(0, 0, 1, 1), mgr->getParentWindow(), deviceIndex);
-
+	m_wnd->SetVideoSource(this);
+	
 }
 
 
 
 
-void VideoSourceMgr::setMainViewState(MainViewState viewState)
+void VideoSourceMgr::set_interactive_state(InteractiveState viewState)
 {
-
-	m_review_window.set_Main_View_State(viewState);
-
-
-	if (viewState == MAIN_VIEW_NORMAL_STATE)
+	if (viewState == NO_INTERACTIVE)
 	{
-		setNormalViewState();
+		m_review_window.ShowWindow(FALSE);
+		m_current_interactive_source = nullptr;
+		m_review_window.set_Capture_Video_Source(nullptr);
+		m_review_window.set_Interactive_State(viewState);
 		return;
 	}
 	
 	// if it is the freeze frame review state or the record review state
 
-	if (getViewMode() == SPEAKER_VIEW)
+	if (getViewMode() == SPEAKER_ONE_VIEW)
 	{
-		m_lastSpeakerViewMainSource->ShowWindow(FALSE);
-		CRect source_rect = m_lastSpeakerViewMainSource->GetWndRect();
-		m_review_window.MoveWindow(source_rect.left, source_rect.top, source_rect.Width(), source_rect.Height());
-		m_review_window.ShowWindow(TRUE);
-		m_main_view_state = viewState;
-		m_main_view_source = m_lastSpeakerViewMainSource;
-		// bind the frame recorder to the interactive window 
-		CapturedVideoSource* cvs = dynamic_cast<CapturedVideoSource*>(m_lastSpeakerViewMainSource);
-		if (cvs != nullptr)
-		{
-			
-			m_review_window.set_Capture_Video_Source(cvs);
-		}
-		
 
-
-	}
-	if (getViewMode() == ONE_VIEW)
-	{
-		m_lastOneViewSource->ShowWindow(FALSE);
-		CRect source_rect = m_lastOneViewSource->GetWndRect();
-		m_review_window.MoveWindow(source_rect.left, source_rect.top, source_rect.Width(), source_rect.Height());
-		m_review_window.ShowWindow(TRUE);
-		m_main_view_state = viewState;
-		m_main_view_source = m_lastOneViewSource;
-		// bind the frame recorder to the interactive window 
-		CapturedVideoSource* cvs = dynamic_cast<CapturedVideoSource*>(m_lastOneViewSource);
-		if (cvs != nullptr)
+		if (get_main_views().size() > 0)
 		{
-			
-			m_review_window.set_Capture_Video_Source(cvs);
+			VideoSource* vs = get_main_views()[0];
+			vs->ShowWindow(FALSE);
+			CRect source_rect = vs->GetWndRect();
+			m_review_window.MoveWindow(source_rect.left, source_rect.top, source_rect.Width(), source_rect.Height());
+			m_review_window.ShowWindow(TRUE);
+			m_current_interactive_source = vs;
+			// bind the frame recorder to the interactive window 
+			CapturedVideoSource* cvs = dynamic_cast<CapturedVideoSource*>(m_current_interactive_source);
+			if (cvs != nullptr)
+			{
+
+				m_review_window.set_Capture_Video_Source(cvs);
+			}
 
 		}
+		m_review_window.set_Interactive_State(viewState);
+	}
+	else
+	{
+		// not support the interactive mode if 2 view or 4 view in the main area
 	}
 
+
 }
-void VideoSourceMgr::setNormalViewState()
-{
-	m_main_view_state = MAIN_VIEW_NORMAL_STATE;
-	m_review_window.ShowWindow(FALSE);
-	m_main_view_source = nullptr;
-	if (getViewMode() == SPEAKER_VIEW)
-	{
-		setSpeakerViewAndSource(m_lastSpeakerViewMainSource, m_lastSortedSpeakerViewVideoSource);
-	}
-	if (getViewMode() == ONE_VIEW)
-	{
-		setOneViewAndSource(this->m_lastOneViewSource);
-	}
-	
-	m_review_window.set_Capture_Video_Source(nullptr);
-}
+
 
 //proxy the interactive window to working on review and play stuff
 void VideoSourceMgr::start_Recording(string record_file)
@@ -837,4 +635,84 @@ vector<FreezeFrame>  VideoSourceMgr::get_FreezeFrames()
 void  VideoSourceMgr::display_freeze_frame(FreezeFrame *freezeframe)
 {
 	m_review_window.display_freeze_frame(freezeframe);
+}
+
+void  VideoSourceMgr::switch_view_mode(VideoMode newVideoMode)
+{
+	if (newVideoMode == m_viewMode)
+		return;
+
+	if (interactive_state != NO_INTERACTIVE)
+	{
+		return;
+	}
+
+	m_viewMode = newVideoMode;
+	vector<VideoSource *> main_views = get_main_views();
+	CRect rect;
+	m_parentWndPtr->GetClientRect(&rect);
+	
+
+	vector<VideoSource*>::iterator itor = main_views.begin();
+	
+	while (itor != main_views.end())
+	{
+		VideoSource *vs = *itor;
+		push_back_to_subview(vs);
+		itor++;
+	}
+		
+	pack_windows();
+	
+}
+
+void  VideoSourceMgr::draw_main_rect(CPaintDC &dc)
+{
+	
+		// Create a pen for drawing the lines
+		CPen pen(PS_SOLID, 2, RGB(255, 0, 0)); // red, 2-pixel wide pen
+		CPen* pOldPen = dc.SelectObject(&pen);
+
+		vector<CRect>::iterator itor = m_main_window_rects.begin();
+		while (itor != m_main_window_rects.end())
+		{
+			CRect rect = *itor;
+			rect.DeflateRect(1, 1);
+			dc.Rectangle(rect);
+			itor++;
+		}
+		
+		/*
+		CRect rect;
+		m_parentWndPtr->GetClientRect(rect);
+
+
+
+
+
+
+
+
+		if (SPEAKER_ONE_VIEW == this->getViewMode())
+		{
+		
+			dc.Rectangle(rect_line_offset, rect_line_offset, rect.Width() - rect_line_offset, rect.Height()*h_percentage - rect_line_offset);
+		}
+		if (SPEAKER_TWO_VIEW == this->getViewMode())
+		{
+		
+			dc.Rectangle(rect_line_offset, rect_line_offset, rect.Width() - rect_line_offset, rect.Height()*h_percentage - rect_line_offset);
+			dc.MoveTo(rect.Width() / 2, rect_line_offset);
+			dc.LineTo(rect.Width() / 2, rect.Height()*h_percentage - rect_line_offset);
+		}
+		if (SPEAKER_FOUR_VIEW == this->getViewMode())
+		{
+		
+			dc.Rectangle(rect_line_offset, rect_line_offset, rect.Width() - rect_line_offset, rect.Height()*h_percentage - rect_line_offset);
+			dc.MoveTo(rect.Width() / 2, rect_line_offset);
+			dc.LineTo(rect.Width() / 2, rect.Height()*h_percentage - rect_line_offset);
+			dc.MoveTo(rect_line_offset, rect.Height()*h_percentage/2);
+			dc.LineTo(rect.Width() - rect_line_offset, rect.Height()*h_percentage / 2);
+		}*/
+	
 }

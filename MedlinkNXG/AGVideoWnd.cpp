@@ -188,7 +188,9 @@ CAGVideoWnd::~CAGVideoWnd()
 {
 	m_imgBackGround.DeleteImageList();
 }
-
+#define ON_REGISTERED_MESSAGE(message, memberFxn) \
+    { message, 0, 0, 0, AfxSig_lwl, \
+        (AFX_PMSG)(AFX_PMSGW)(LRESULT (AFX_MSG_CALL CWnd::*)(WPARAM, LPARAM))(memberFxn) },
 
 BEGIN_MESSAGE_MAP(CAGVideoWnd, CWnd)
 	ON_WM_ERASEBKGND()
@@ -199,6 +201,8 @@ BEGIN_MESSAGE_MAP(CAGVideoWnd, CWnd)
 	ON_WM_PAINT()
 	ON_WM_SIZE()
 	ON_WM_LBUTTONDBLCLK()
+	ON_WM_MOUSEMOVE()
+	ON_WM_NCACTIVATE()
 END_MESSAGE_MAP()
 
 
@@ -277,22 +281,102 @@ void CAGVideoWnd::SetFaceColor(COLORREF crBackColor)
 }
 
 
+void CAGVideoWnd::SetVideoSource(VideoSource *vs)
+{
+	m_videoSource = vs;
+}
+VideoSource* CAGVideoWnd::GetVideoSource()
+{
+	return m_videoSource;
+}
+
 void CAGVideoWnd::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	// TODO:  add message handle code and /or call default values here
 
 	::SendMessage(GetParent()->GetSafeHwnd(), WM_LBUTTON_DOWN_WND, (WPARAM)point.x, (LPARAM)point.y);
-
 	CWnd::OnLButtonDown(nFlags, point);
+	setActive(TRUE);
+	
+	m_bDragging = TRUE;
+	m_ptDragStart = point;
+
+	SetCapture();
+	SetWindowPos(&wndTop, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
+
+	
 }
+
+
+void CAGVideoWnd::OnMouseMove(UINT nFlags, CPoint point)
+{
+	// The user is moving the mouse on the window
+	if (m_bDragging)
+	{
+		// Calculate the new position of the window
+		
+		
+		CPoint ptOffset = point - m_ptDragStart;
+		CRect rectWnd;
+		GetWindowRect(&rectWnd);
+		GetParent()->ScreenToClient(&rectWnd);
+
+		rectWnd.OffsetRect(ptOffset);
+		CRect rectParent;
+		GetParent()->GetClientRect(&rectParent);
+
+		if (rectWnd.left < rectParent.left)
+		{
+			rectWnd.OffsetRect(rectParent.left - rectWnd.left, 0);
+		}
+		if (rectWnd.right > rectParent.right)
+		{
+			rectWnd.OffsetRect(rectParent.right - rectWnd.right, 0);
+		}
+		if (rectWnd.top < rectParent.top)
+		{
+			rectWnd.OffsetRect(0, rectParent.top - rectWnd.top);
+		}
+		if (rectWnd.bottom > rectParent.bottom)
+		{
+			rectWnd.OffsetRect(0, rectParent.bottom - rectWnd.bottom);
+		}
+
+		SetWindowPos(NULL, rectWnd.left, rectWnd.top, rectWnd.Width(), rectWnd.Height(), SWP_NOZORDER | SWP_NOACTIVATE);
+
+		//GetParent()->Invalidate();
+	
+
+
+	}
+}
+
 
 void CAGVideoWnd::OnLButtonUp(UINT nFlags, CPoint point)
 {
 	// TODO:  add message handle code and /or call default values here
 
 	::SendMessage(GetParent()->GetSafeHwnd(), WM_LBUTTON_UP_WND, (WPARAM)point.x, (LPARAM)point.y);
-
 	CWnd::OnLButtonDown(nFlags, point);
+	setActive(FALSE);
+	if (m_bDragging)
+	{
+		// Move the window to the new position
+		ReleaseCapture();
+		m_bDragging = FALSE;
+		
+		CRect rectWnd;
+		GetWindowRect(&rectWnd);
+		GetParent()->ScreenToClient(&rectWnd);
+
+		m_videoSource->drop_to_main(rectWnd);
+		
+
+	}
+
+
+	
 }
 
 void CAGVideoWnd::OnRButtonDown(UINT nFlags, CPoint point)
@@ -346,6 +430,46 @@ void CAGVideoWnd::OnLButtonDblClk(UINT nFlags, CPoint point)
 }
 
 
+BOOL CAGVideoWnd::OnNcActivate(BOOL bActive)
+{
+	setActive(bActive);
+	return TRUE;
+}
+
+
+void CAGVideoWnd::setActive(BOOL bActive)
+{
+
+	if (bActive)
+	{
+		// highlight the window
+		ModifyStyleEx(0, WS_EX_WINDOWEDGE);
+	}
+	else
+	{
+		// remove the highlight
+		ModifyStyleEx(WS_EX_WINDOWEDGE, 0);
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 void CapturedSourceVideoWnd::SetLocalVideoSource(CapturedVideoSource * localvideosource)
 {
 	m_local_video_source = localvideosource;
@@ -392,11 +516,11 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 }
 	void CVideoPlayerWnd::OnPaint() {
 		CWnd::OnPaint();
-		if (m_main_view_state == MAIN_VIEW_RECORD_REVIEW_STATE)
+		if (m_main_view_state == VIDEO_REVIEW_STATE)
 		{
 			m_current_capture_main_source->getFrameRecorder()->display_frame(current_display_frame_index, this);
 		}
-		if (m_main_view_state == MAIN_VIEW_REVIEW_FREEZE_FRAME_STATE && m_current_freeze_frame!=nullptr)
+		if (m_main_view_state == FREEZE_FRAME_STATE && m_current_freeze_frame!=nullptr)
 		{
 
 			m_current_capture_main_source->getFrameRecorder()->display_frame(m_current_freeze_frame, this);
@@ -515,7 +639,7 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 	 }
 
 
-	 void CVideoPlayerWnd::set_Main_View_State(MainViewState state)
+	 void CVideoPlayerWnd::set_Interactive_State(InteractiveState state)
 	 {
 		 m_main_view_state = state;
 

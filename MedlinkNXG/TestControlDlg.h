@@ -18,52 +18,41 @@ class TestControlDlg : public CDialogEx,public IFrameRecorderObserver
 
 private:
 	VideoSourceMgr *videoMgr;
-
+	int frame_num = 0;
 public:
-	TestControlDlg(CWnd* pParent = nullptr);   // 标准构造函数
+	TestControlDlg(CWnd* pParent = nullptr);   
 	virtual ~TestControlDlg();
 	void setVideoSourceMgr(VideoSourceMgr *mgr);
 
-// 对话框数据
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_DIALOG_CONTROL };
 #endif
 
 protected:
-	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
+	virtual void DoDataExchange(CDataExchange* pDX);   
 
 	DECLARE_MESSAGE_MAP()
 public:
-	afx_msg void OnBnClickedButtonSpeakerView();
-	afx_msg void OnBnClickedButtonGallery();
-	afx_msg void OnBnClickedButtonSingle();
-	afx_msg void OnBnClickedButtonSpeakerStartStopRecord();
-	afx_msg void OnBnClickedButtonSpeakerReviewModeEnter();
-	afx_msg void OnBnClickedButtonScreenshotSpeakerView();
-	afx_msg void OnBnClickedButtonScreenshotAll();
-	afx_msg LRESULT OnMessageReceived(WPARAM wParam, LPARAM lParam);
-		virtual void on_frame_freeze(FreezeFrame freezeframe);
-	CButton gallery_mode;
-	CButton startStopRecord;
-	CButton speakerView;
-	CButton reviewMode;
-	CButton screenShotAll;
-	CListBox m_video_source_list;
+	afx_msg void OnBackToNoInteractive();
+	afx_msg void on_4view();
+	afx_msg void on_1view();
+	afx_msg void OnStartRecording();
+	
+	afx_msg void OnFreezeFrame();
+	
+	virtual void on_frame_freeze(FreezeFrame freezeframe);
+
 	bool start_recording = FALSE;
-	afx_msg void OnBnClickedButtonDoubleTb();
-	afx_msg void OnBnClickedButtonDoubleLr();
+
+	afx_msg void On_2view();
 
 	BOOL OnInitDialog();
-	
-	CImageList m_imageList;
-	
-	CListCtrl thumbnail_list;
-	afx_msg void OnBnClickedButtonLoadFile();
-	afx_msg void OnBnClickedButtonPlayRecord();
-	afx_msg void OnBnClickedButtonStopPlaying();
-	afx_msg void OnBnClickedButtonNextFrame();
+	afx_msg void on_play_record();
+	afx_msg void on_stop_record_play();
+	afx_msg void on_next_frame();
 	afx_msg void OnBnClickedButtonPrevFrame();
 	afx_msg void OnNMCustomdrawSliderFrameSel(NMHDR *pNMHDR, LRESULT *pResult);
 	CSliderCtrl m_frame_slider;
 	afx_msg void OnBnClickedButtonFreezeFrameReview();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 };
