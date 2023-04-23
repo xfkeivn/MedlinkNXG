@@ -118,6 +118,20 @@ public:
 };
 class FrameRecorder;
 class CapturedVideoSource;
+class VideoSourceMgr;
+
+
+
+class IVideoPlayerObserver
+{
+public:
+	virtual void on_frame_freezed(FreezeFrame freezeframe) = 0;
+	virtual void on_video_record_loaded(int frame_number) = 0;
+	virtual void on_frame_changed(int frame_index) = 0;
+	virtual void on_video_play_to_end(int frame_index) = 0;
+};
+
+
 class CVideoPlayerWnd : public CWnd {
 
 	DECLARE_DYNAMIC(CVideoPlayerWnd)
@@ -131,30 +145,35 @@ public:
 	void freeze_one_frame();
 	
 	//can only be called at review state
-	int  load_Review_Record(string record_file);
+
 	void start_Playing_Record(int frame_index = 0);
 	void pause_Playing_Record();
 	void next_Frame();
 	void prev_Frame();
 	void goto_Frame(int frame_index);
 	void display_freeze_frame(FreezeFrame *freezeframe);
-	void set_Interactive_State(InteractiveState state);
-	
-	vector<FreezeFrame>  get_FreezeFrames();
-	
+	void on_frame_freezed(FreezeFrame *freezeframe);
+	void setVideoSourceMgr(VideoSourceMgr *mgr);
+	int get_current_record_frames() { return m_current_record_frame_number; }
+	int get_get_current_review_frame_index() {return current_display_frame_index;
+	}
+	void add_observer(IVideoPlayerObserver* observer) { m_observers.push_back(observer); }
 protected:
 	afx_msg void OnPaint();
 	afx_msg void OnSize(UINT id, int w, int h);
 	afx_msg int  OnCreate(LPCREATESTRUCT lpCreateStruct);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
-
+	afx_msg LRESULT on_video_player_notification(WPARAM wParam, LPARAM lParam);
+	int  load_Review_Record(string record_file);
 private:
-	InteractiveState m_main_view_state = NO_INTERACTIVE;
+	vector<IVideoPlayerObserver*> m_observers;
 	int  current_display_frame_index = 0;
 	int  current_display_video_total_frame_number = 0;
 	bool m_isPlaying = FALSE;
+	VideoSourceMgr *m_videoSourcceMgr;
 	bool m_isPaused = TRUE;
 	CapturedVideoSource* m_current_capture_main_source=nullptr;
 	FreezeFrame *m_current_freeze_frame = nullptr;
+	int m_current_record_frame_number = 0;
 	DECLARE_MESSAGE_MAP()
 };

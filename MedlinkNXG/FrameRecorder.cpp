@@ -2,9 +2,11 @@
 #include <iostream>
 #include <cstdio>
 #include "libyuv.h"
+#include "AGVideoWnd.h"
+#include "VideoSourceMgr.h"
 #define MAX_VIDEO_BUFFER_SIZE (4*1920*1080)
 using namespace std;
-char display_buffer[MAX_VIDEO_BUFFER_SIZE];
+
 
 bool fileExists(const std::string& fileName) {
 	std::ifstream infile(fileName);
@@ -79,16 +81,12 @@ CBitmap* Yuv420iToCBitmap(CBitmap* pBitmap,const uint8_t* yuv_buffer, int width,
 	return pBitmap;
 }
 
-
-
-
-
-
-
-
 FrameRecorder::FrameRecorder()
 {
 	bitmapData = new unsigned char[MAX_VIDEO_BUFFER_SIZE];
+	display_buffer = new char[MAX_VIDEO_BUFFER_SIZE];
+	freeze_frame_buffer = new unsigned char[MAX_VIDEO_BUFFER_SIZE];
+	m_freeze_frame = { 0,freeze_frame_buffer,MAX_VIDEO_BUFFER_SIZE,0,0 };
 	InitializeCriticalSection(&m_cs);
 }
 void FrameRecorder::start_recording(FileHeader infileHeader, string file_name)
@@ -102,9 +100,6 @@ void FrameRecorder::start_recording(FileHeader infileHeader, string file_name)
 	{
 		remove(file_name.c_str());
 	}
-
-
-
 	file_name = file_name;
 	if (m_infile.is_open()) {
 		m_infile.close();
@@ -141,9 +136,6 @@ void FrameRecorder::record_frame(char* ybuffer,int ybuffersize, int width, int h
 		freeze_one_frame(ybuffer, ybuffersize,width,height, tick);
 		is_free_frame = FALSE;
 	}
-
-
-
 	if (is_recording == TRUE)
 	{
 		EnterCriticalSection(&m_cs);
@@ -171,8 +163,6 @@ void FrameRecorder::display_frame(int frame_index, CWnd* pWnd)
 		m_infile.read(display_buffer, framesize);
 		display_yuv_on_window(pWnd, display_buffer, display_buffer + ysize, display_buffer + ysize + uvsize,fileheader.frame_width,fileheader.frame_heigth);
 	}
-
-
 }
 
 void  FrameRecorder::display_frame(FreezeFrame *freezeframe, CWnd* pWnd)
@@ -231,10 +221,7 @@ void FrameRecorder::display_yuv_on_window(CWnd* pWnd,  char* yPlane,  char* uPla
 		// Stretch horizontally
 		h = nClientHeight;
 		w = nClientHeight * dbAspectRatio;
-
 		x = (nClientWidth - w) / 2;
-		
-		
 	}
 	else {
 		w = nClientWidth;
@@ -252,32 +239,23 @@ void FrameRecorder::display_yuv_on_window(CWnd* pWnd,  char* yPlane,  char* uPla
 
 void FrameRecorder::freeze_one_frame(char* ybuffer, int ybuffersize, int width, int height, DWORD tick)
 {
-	BYTE * buffer = new BYTE[MAX_VIDEO_BUFFER_SIZE];
-	memcpy_s(buffer, MAX_VIDEO_BUFFER_SIZE, ybuffer, ybuffersize);
-	FreezeFrame freezeFrame = { tick,buffer,MAX_VIDEO_BUFFER_SIZE,width,height };
-	m_freeze_frames.push_back(freezeFrame);
-
-
-	for each (auto observer in m_observers)
-	{
-		observer->on_frame_freeze(freezeFrame);
-
-	}
+	//m_freeze_frames.clear();
+	memcpy_s(freeze_frame_buffer, MAX_VIDEO_BUFFER_SIZE, ybuffer, ybuffersize);
+	m_freeze_frame.width = width;
+	m_freeze_frame.heigth = height;
+	m_freeze_frame.time_tick = tick;
+	((CVideoPlayerWnd*)m_preview_wnd)->on_frame_freezed(&m_freeze_frame);
 }
 
 FrameRecorder::~FrameRecorder()
 {
-	if (m_infile.is_open()) {
-		m_infile.close();
-	}
-	if (m_outfile.is_open())
-	{
-		m_outfile.close();
-	}
-	
+	reset();
 	delete[] bitmapData;
+	delete[] freeze_frame_buffer;
+	delete[] display_buffer;
 	DeleteCriticalSection(&m_cs);
 
+	/*
 	vector<FreezeFrame>::iterator itor = m_freeze_frames.begin();
 	while (itor != m_freeze_frames.end())
 	{
@@ -288,9 +266,48 @@ FrameRecorder::~FrameRecorder()
 		}
 		itor++;
 	}
+	*/
 }
 
 void FrameRecorder::freeze_frame()
 {
 	is_free_frame = TRUE;
+}
+
+bool FrameRecorder::is_push_recorded_frame()
+{
+	VideoSource* vs = m_videoSource->getVideoSourceMgr()->get_main_video_source_in_review();
+	if (vs == m_videoSource)
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+void FrameRecorder::setVideoSource(VideoSource * vs)
+{
+	m_videoSource = vs;
+}
+BYTE* FrameRecorder::get_current_review_buffer()
+{
+	InteractiveState state = m_videoSource->getVideoSourceMgr()->get_interactive_state();
+	if (state == FREEZE_FRAME_REVIEW_STATE)
+	{
+		return freeze_frame_buffer;
+	}
+	if (state == VIDEO_RECORD_REVIEW_STATE)
+	{
+		return (BYTE*)display_buffer;
+	}
+	return nullptr;
+}
+void FrameRecorder::reset()
+{
+	if (m_infile.is_open()) {
+		m_infile.close();
+	}
+	if (m_outfile.is_open())
+	{
+		m_outfile.close();
+	}
 }

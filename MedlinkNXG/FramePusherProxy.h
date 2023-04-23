@@ -10,7 +10,7 @@ private:
 	string m_mutext_name;
 	string m_shm_name;
 	string m_channel_id;
-	string m_user_id;
+	int m_user_id;
 	string m_app_id;
 	int user_id;
 	void* m_shm_address;

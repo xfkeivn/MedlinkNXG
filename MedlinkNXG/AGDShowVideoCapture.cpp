@@ -307,7 +307,16 @@ BOOL CAGDShowVideoCapture::OpenDevice(CString devicePath)
         if (hResult != S_OK)
             return FALSE;
 
-        SelectMediaCap(devicePath,0);
+
+		map<int, VIDEOINFOHEADER> index_map = get_Device_I420_Support_Config(devicePath);
+	
+		if (index_map.size() != 0)
+		{
+			int index = index_map.begin()->first;
+			SelectMediaCap(devicePath, index);
+		}
+		else
+			SelectMediaCap(devicePath,0);
 	
     }
 
@@ -331,6 +340,24 @@ void CAGDShowVideoCapture::CloseDevice(CString devicePath)
     
 	vsc->active = false;
 }
+
+map<int, VIDEOINFOHEADER> CAGDShowVideoCapture::get_Device_I420_Support_Config(CString devicePath)
+{
+	int mediaCapCount = GetMediaCapCount(devicePath);
+	map<int, VIDEOINFOHEADER> index_config_map;
+	for (int i = 0; i < mediaCapCount; i++)
+	{
+		VIDEOINFOHEADER header;
+		GetVideoCap(devicePath, i, &header);
+	
+		if (header.bmiHeader.biCompression == MAKEFOURCC('I', '4', '2', '0') && header.AvgTimePerFrame == 333333 && header.bmiHeader.biWidth == 1920 && header.bmiHeader.biHeight == 1080)
+		{
+			index_config_map[i] = header;
+		}
+	}
+	return index_config_map;
+}
+
 
 int CAGDShowVideoCapture::GetMediaCapCount(CString devicePath)
 {
@@ -440,8 +467,6 @@ BOOL CAGDShowVideoCapture::SelectMediaCap(CString devicePath,int nIndex)
         ATLASSERT(SUCCEEDED(hResult));
         if (FAILED(hResult))
             break;
-
-		
 
 		if (lpMediaType->formattype == FORMAT_VideoInfo) {
 			VIDEOINFOHEADER* pVideoInfo = reinterpret_cast<VIDEOINFOHEADER*>(lpMediaType->pbFormat);
@@ -955,7 +980,8 @@ void CAGDShowVideoCapture::Receive(CString devicePath,bool video, IMediaSample *
             bmiHeader.biWidth, bmiHeader.biHeight);
         break;
     case MAKEFOURCC('I', '4', '2', '0'):	// I420
-        memcpy_s(m_lpYUVBuffer, 0x800000, pBuffer, size);
+		m_lpYUVBuffer = pBuffer;
+        //memcpy_s(m_lpYUVBuffer, 0x800000, pBuffer, size);
         break;
     case MAKEFOURCC('Y', 'U', 'Y', '2'):	// YUY2
         YUY2ToI420(pBuffer, bmiHeader.biWidth * 2,
@@ -994,7 +1020,15 @@ void CAGDShowVideoCapture::Receive(CString devicePath,bool video, IMediaSample *
 	DWORD ts = GetTickCount();
 	vsc->m_frameRecorder->record_frame((char*)m_lpYUVBuffer,nYUVSize, bmiHeader.biWidth, bmiHeader.biHeight, ts);
 	// push the the other process
-	vsc->m_framePusherProxy->push_frame(m_lpYUVBuffer, nYUVSize, ts);
+	if (vsc->m_frameRecorder->is_push_recorded_frame())
+	{
+		BYTE* buffer = vsc->m_frameRecorder->get_current_review_buffer();
+		vsc->m_framePusherProxy->push_frame(buffer, nYUVSize, ts);
+	}
+	else
+		vsc->m_framePusherProxy->push_frame(m_lpYUVBuffer, nYUVSize, ts);
+	
+	
 	return;
 
 

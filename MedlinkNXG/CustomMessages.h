@@ -1,3 +1,3 @@
 #pragma once
 #include "stdafx.h"
-#define WM_ON_FREEZE_FRAME (WM_APP + 1)
+#define WM_VIDEO_PLAYER_NOTIFCATION (WM_APP + 1)

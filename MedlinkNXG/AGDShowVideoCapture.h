@@ -8,9 +8,9 @@
 #include <vector>
 #include <tchar.h>
 #include <windows.h>
-
+#include <map>
 #pragma comment(lib, "strmbase.lib")
-
+using namespace std;
 
 typedef struct _AGORA_DEVICE_INFO
 {
@@ -70,6 +70,7 @@ public:
 
 	virtual vector<AGORA_DEVICE_INFO> GetDeviceList();
 	virtual BOOL OpenDevice(CString devicePath);
+	virtual map<int, VIDEOINFOHEADER> get_Device_I420_Support_Config(CString devicePath);
 	
 	virtual void CloseDevice(CString devicePath);
 

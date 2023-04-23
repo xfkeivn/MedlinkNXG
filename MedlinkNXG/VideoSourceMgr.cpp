@@ -6,6 +6,9 @@
 #include <typeinfo.h>
 #include "resource.h"
 #include "FrameRecorder.h"
+#include <filesystem>
+namespace fs = std::experimental::filesystem;
+
 extern std::shared_ptr<spdlog::logger> logger;
 
 
@@ -24,6 +27,7 @@ VideoSourceMgr::VideoSourceMgr(CWnd* parentWndPtr)
 	m_captureMgr = new CAGDShowVideoCapture();
 	m_review_window.Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, CRect(0, 0, 1, 1), this->m_parentWndPtr,0);
 	//Default mode is SPEAKER_VIEW, But if there is only one it will fall back to one view mode.
+	m_review_window.setVideoSourceMgr(this);
 	m_viewMode = SPEAKER_ONE_VIEW;
 	init("b158865ce08b43f788e909aceda9fb7f", "100");
 }
@@ -116,38 +120,15 @@ void VideoSourceMgr::init_custom_capture_video_source()
 		indexstr.Format(_T("_%d"), device_index);
 		string device_show_name = CW2A(info.szDeviceName + indexstr);
 		int mediaCapCount = m_captureMgr->GetMediaCapCount(info.szDevicePath);
-		for (int i = 0; i < mediaCapCount; i++)
-		{
-			VIDEOINFOHEADER header;
-			m_captureMgr->GetVideoCap(info.szDevicePath, i, &header);
-			if (device_video_caps.find(device_show_name) == device_video_caps.end())
-			{
-				device_video_caps[device_show_name] = vector<VIDEOINFOHEADER>();
-
-			}
-			if (header.bmiHeader.biCompression == MAKEFOURCC('I', '4', '2', '0'))
-			{
-				device_video_caps[device_show_name].push_back(header);
-
-				if (header.bmiHeader.biWidth == 1920 && header.bmiHeader.biHeight == 1080 && header.AvgTimePerFrame == 333333)
-				{
-					//m_captureMgr->SelectMediaCap(info.szDevicePath, i);
-					break;
-				}
-
-			}
-			
-		}
-		
 		logger->debug("OpenDevice {}",info.szDevicePath);
 		m_captureMgr->StartPusherProcess(info.szDevicePath,m_agora_app_id,m_agora_meeting_channel, agora_user_id);
 		CapturedVideoSource * capturedVideoSource = new CapturedVideoSource(this,agora_user_id,info.szDevicePath, m_captureMgr, device_index);
+		capturedVideoSource->getFrameRecorder()->SetPreviewWindow(&m_review_window);
+		capturedVideoSource->getFrameRecorder()->setVideoSource(capturedVideoSource);
 		m_captureMgr->SetPreviewWnd(info.szDevicePath, capturedVideoSource->getVideoWindow());
 		//Create the capture video source 
 		VIDEOINFOHEADER video_info_header;
 		m_captureMgr->GetSelectedVideoCap(info.szDevicePath, &video_info_header);
-		
-		capturedVideoSource->getFrameRecorder()->add_observer(&test_dlg);
 		capturedVideoSource->videoInfoHeader = video_info_header;
 		capturedVideoSource->m_show_name = device_show_name;
 		addVideoSource(capturedVideoSource);
@@ -156,11 +137,12 @@ void VideoSourceMgr::init_custom_capture_video_source()
 		itor++;
 		
 	}
+	m_review_window.add_observer(&test_dlg);
 	//start the capturing
 	m_captureMgr->Start();
 	// the default layout is the speaker mode, but if there is only one, fall back to one view mode.
 	// in one view mode and speaker view, you can change to the recording and review state, other view mode cannot change to those states.
-	interactive_state = NO_INTERACTIVE;
+	m_interactive_state = NO_INTERACTIVE;
 	pack_windows();
 	// This is the test dialog for debug, in the release mode, it will be the commands from the remote or the control from local
 	test_dlg.Create(IDD_DIALOG_CONTROL, this->m_parentWndPtr);
@@ -334,12 +316,21 @@ void VideoSourceMgr::pack_windows()
 			{
 				if (m_viewMode == SPEAKER_ONE_VIEW)
 				{
-					vs->MoveWindow(0, 0, main_width, main_height*h_percentage);
-					vs->ShowWindow(TRUE);
+					if (m_interactive_state ==  VIDEO_RECORD_REVIEW_STATE  ||  m_interactive_state == FREEZE_FRAME_REVIEW_STATE)
+					{
+						vs->ShowWindow(FALSE);
+						m_review_window.MoveWindow(0, 0, main_width, main_height*h_percentage);
+						m_review_window.ShowWindow(TRUE);
+					}
+					else 
+					{
+						vs->ShowWindow(TRUE);
+						vs->MoveWindow(0, 0, main_width, main_height*h_percentage);
+					}
 				}
 				else if (m_viewMode == SPEAKER_TWO_VIEW)
 				{
-					
+										
 					vs->MoveWindow(vs->get_main_view_index()*ceil(main_width / 2.0), 0, floor(main_width / 2.0), main_height*h_percentage);
 					vs->ShowWindow(TRUE);
 				}
@@ -425,16 +416,6 @@ void VideoSourceMgr::pack_windows()
 			m_main_window_rects.push_back(rect4);
 			
 		}
-
-
-
-
-
-
-
-
-
-
 		}
 
 		m_parentWndPtr->Invalidate();
@@ -448,7 +429,15 @@ void VideoSourceMgr::showVideoView(VideoSource * video_source_id)
 {
 
 }
-
+VideoSource* VideoSourceMgr::get_main_video_source_in_review()
+{
+	if (m_interactive_state == FREEZE_FRAME_REVIEW_STATE || m_interactive_state == VIDEO_RECORD_REVIEW_STATE )
+	{
+		if ( get_main_views().size() == 1)
+			return get_main_views()[0];
+	}
+	return NULL;
+}
 
 CRect VideoSource::GetWndRect()
 {
@@ -492,8 +481,16 @@ VideoSource* VideoSourceMgr::getDefaultVideoSource()
 }
 void  VideoSource::ShowWindow(bool show)
 {
-	m_wnd->ShowWindow(show);
+	if (m_hidden)
+	{
+		m_wnd->ShowWindow(FALSE);
+	}
+	else
+		m_wnd->ShowWindow(show);
 }
+
+bool VideoSource::canDragAndDrop() { 
+	return m_video_source_mgr->get_interactive_state() == NO_INTERACTIVE; }
 
 void VideoSource::drop_to_main(CRect rect)
 {
@@ -543,106 +540,165 @@ CapturedVideoSource::CapturedVideoSource(VideoSourceMgr * mgr, int agora_user_id
 
 
 
-void VideoSourceMgr::set_interactive_state(InteractiveState viewState)
+bool VideoSourceMgr::set_interactive_state(InteractiveState viewState)
 {
 	if (viewState == NO_INTERACTIVE)
 	{
 		m_review_window.ShowWindow(FALSE);
-		m_current_interactive_source = nullptr;
-		m_review_window.set_Capture_Video_Source(nullptr);
-		m_review_window.set_Interactive_State(viewState);
-		return;
-	}
-	
-	// if it is the freeze frame review state or the record review state
 
-	if (getViewMode() == SPEAKER_ONE_VIEW)
-	{
-
-		if (get_main_views().size() > 0)
+		if (m_current_interactive_source != nullptr)
 		{
-			VideoSource* vs = get_main_views()[0];
-			vs->ShowWindow(FALSE);
-			CRect source_rect = vs->GetWndRect();
-			m_review_window.MoveWindow(source_rect.left, source_rect.top, source_rect.Width(), source_rect.Height());
-			m_review_window.ShowWindow(TRUE);
-			m_current_interactive_source = vs;
-			// bind the frame recorder to the interactive window 
 			CapturedVideoSource* cvs = dynamic_cast<CapturedVideoSource*>(m_current_interactive_source);
 			if (cvs != nullptr)
 			{
+				cvs->getFrameRecorder()->reset();
+			}
+		}
+		m_current_interactive_source = nullptr;
+		m_review_window.set_Capture_Video_Source(nullptr);
+		m_interactive_state = viewState;
+		pack_windows();
+		return true;
+	}
 
-				m_review_window.set_Capture_Video_Source(cvs);
+	// the viewState has no change, skip
+	if (m_interactive_state == viewState)
+	{
+		return FALSE;
+	}
+
+	// Need to be in the NO_INTERACITVE STATE for start recording and freezing
+	if (viewState == VIDEO_RECORDING_STATE || viewState == FREEZING_FRAME_STATE)
+	{
+		if (m_interactive_state != NO_INTERACTIVE)
+			return FALSE;
+	}
+	//if current is review state, cannot change to other but no_interactive
+	if (m_interactive_state == VIDEO_RECORD_REVIEW_STATE || m_interactive_state == FREEZE_FRAME_REVIEW_STATE)
+	{
+		if (viewState != NO_INTERACTIVE)
+		{
+			return FALSE;
+		}
+	}
+	
+	// only one view with active main view source we can start the interactive mode.
+
+	if (getViewMode() == SPEAKER_ONE_VIEW)
+	{
+		if (get_main_views().size() ==  1)
+		{
+			VideoSource* vs = get_main_views()[0];
+
+			if (viewState == VIDEO_RECORDING_STATE || viewState == FREEZING_FRAME_STATE)
+			{			
+				m_current_interactive_source = vs;
+				// bind the frame recorder to the interactive window 
+				CapturedVideoSource* cvs = dynamic_cast<CapturedVideoSource*>(m_current_interactive_source);
+				if (cvs != nullptr)
+				{
+					m_review_window.set_Capture_Video_Source(cvs);
+				}
+				m_interactive_state = viewState;
+				return true;
+
+			}
+			if (viewState == VIDEO_RECORD_REVIEW_STATE || viewState == FREEZE_FRAME_REVIEW_STATE)
+			{
+				vs->ShowWindow(FALSE);
+				CRect source_rect = vs->GetWndRect();
+				m_review_window.MoveWindow(source_rect.left, source_rect.top, source_rect.Width(), source_rect.Height());
+				m_review_window.ShowWindow(TRUE);
+				m_interactive_state = viewState;
 			}
 
 		}
-		m_review_window.set_Interactive_State(viewState);
+		
 	}
-	else
-	{
-		// not support the interactive mode if 2 view or 4 view in the main area
-	}
-
+	return false;
 
 }
 
 
 //proxy the interactive window to working on review and play stuff
-void VideoSourceMgr::start_Recording(string record_file)
+bool VideoSourceMgr::start_Recording()
 {
-	m_review_window.start_Recording(record_file);
+
+	if (m_interactive_state == NO_INTERACTIVE)
+	{
+		set_interactive_state(VIDEO_RECORDING_STATE);
+		auto name = RECORDING_FILE_NAME;
+		if (fs::exists(name))
+		{
+			fs::remove(name);
+		}
+		m_review_window.start_Recording(name);
+		return TRUE;
+		
+	}
+	return false;
+
+	
 
 }
-void VideoSourceMgr::stop_Recording()
+
+
+
+int VideoSourceMgr::get_total_frames()
 {
-	m_review_window.stop_Recording();
+	return m_review_window.get_current_record_frames();
 }
-int  VideoSourceMgr::load_Review_Record(string record_file)
+int VideoSourceMgr::get_current_frame()
 {
-	return m_review_window.load_Review_Record(record_file);
+	return m_review_window.get_get_current_review_frame_index();
 }
+
 void VideoSourceMgr::start_Playing_Record(int frame_index)
 {
-	m_review_window.start_Playing_Record(frame_index);
+	if (m_interactive_state == VIDEO_RECORD_REVIEW_STATE)
+		m_review_window.start_Playing_Record(frame_index);
 }
 void VideoSourceMgr::pause_Playing_Record()
 {
-	m_review_window.pause_Playing_Record();
+	if (m_interactive_state == VIDEO_RECORD_REVIEW_STATE)
+		m_review_window.pause_Playing_Record();
 }
 void VideoSourceMgr::next_Frame()
 {
-	m_review_window.next_Frame();
+	if (m_interactive_state == VIDEO_RECORD_REVIEW_STATE)
+		m_review_window.next_Frame();
 }
 void VideoSourceMgr::prev_Frame()
 {
-	m_review_window.prev_Frame();
+	if (m_interactive_state == VIDEO_RECORD_REVIEW_STATE)
+		m_review_window.prev_Frame();
 }
 void VideoSourceMgr::goto_Frame(int frame_index)
 {
-	m_review_window.goto_Frame(frame_index);
+	if (m_interactive_state == VIDEO_RECORD_REVIEW_STATE)
+		m_review_window.goto_Frame(frame_index);
 }
 
-void VideoSourceMgr::freeze_one_frame()
+bool VideoSourceMgr::freeze_one_frame()
 {
-	m_review_window.freeze_one_frame();
+	if (m_interactive_state == NO_INTERACTIVE )
+	{
+		this->set_interactive_state(FREEZING_FRAME_STATE);
+		m_review_window.freeze_one_frame();
+		return TRUE;
+	}
+	return FALSE;
+	
+}
 
-}
-vector<FreezeFrame>  VideoSourceMgr::get_FreezeFrames()
-{
-	return m_review_window.get_FreezeFrames();
-}
-
-void  VideoSourceMgr::display_freeze_frame(FreezeFrame *freezeframe)
-{
-	m_review_window.display_freeze_frame(freezeframe);
-}
 
 void  VideoSourceMgr::switch_view_mode(VideoMode newVideoMode)
 {
 	if (newVideoMode == m_viewMode)
 		return;
 
-	if (interactive_state != NO_INTERACTIVE)
+	//only in the normal mode you can switch the view mode
+	if (m_interactive_state != NO_INTERACTIVE)
 	{
 		return;
 	}
@@ -714,5 +770,26 @@ void  VideoSourceMgr::draw_main_rect(CPaintDC &dc)
 			dc.MoveTo(rect_line_offset, rect.Height()*h_percentage/2);
 			dc.LineTo(rect.Width() - rect_line_offset, rect.Height()*h_percentage / 2);
 		}*/
+	
+}
+void VideoSourceMgr::show_sub_views(bool show)
+{
+	sub_view_showable = show;
+	vector<VideoSource*> subviews = get_sub_views();
+	vector<VideoSource*>::iterator itor = subviews.begin();
+	while (itor != subviews.end())
+	{
+		VideoSource* vs = *itor;
+		vs->set_showable(show);
+		itor++;
+	}
+
+	if (show)
+		h_percentage = 0.85;
+	else
+		h_percentage = 1;
+
+	pack_windows();
+
 	
 }

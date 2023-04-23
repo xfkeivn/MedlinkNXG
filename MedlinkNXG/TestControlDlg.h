@@ -4,7 +4,7 @@
 // TestControlDlg 对话框
 #include "stdafx.h"
 #include <vector>
-#include "FrameRecorder.h"
+#include "AGVideoWnd.h"
 using namespace std;
 class VideoSourceMgr;
 
@@ -12,13 +12,14 @@ class VideoSourceMgr;
 
 
 
-class TestControlDlg : public CDialogEx,public IFrameRecorderObserver
+class TestControlDlg : public CDialogEx,public IVideoPlayerObserver
 {
 	DECLARE_DYNAMIC(TestControlDlg)
 
 private:
 	VideoSourceMgr *videoMgr;
 	int frame_num = 0;
+	bool show_sub_view = TRUE;
 public:
 	TestControlDlg(CWnd* pParent = nullptr);   
 	virtual ~TestControlDlg();
@@ -40,7 +41,8 @@ public:
 	
 	afx_msg void OnFreezeFrame();
 	
-	virtual void on_frame_freeze(FreezeFrame freezeframe);
+	//virtual void on_frame_freezed(FreezeFrame freezeframe);
+	//virtual void on_video_recorded(int framenumber);
 
 	bool start_recording = FALSE;
 
@@ -52,7 +54,15 @@ public:
 	afx_msg void on_next_frame();
 	afx_msg void OnBnClickedButtonPrevFrame();
 	afx_msg void OnNMCustomdrawSliderFrameSel(NMHDR *pNMHDR, LRESULT *pResult);
-	CSliderCtrl m_frame_slider;
+//	CSliderCtrl m_frame_slider;
 	afx_msg void OnBnClickedButtonFreezeFrameReview();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg void OnBnClickedButton1();
+
+
+	virtual void on_frame_freezed(FreezeFrame freezeframe);
+	virtual void on_video_record_loaded(int frame_number);
+	virtual void on_frame_changed(int frame_index);
+	virtual void on_video_play_to_end(int frame_index);
+	CSliderCtrl m_frame_slider;
 };

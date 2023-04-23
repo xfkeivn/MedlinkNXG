@@ -28,6 +28,7 @@ void TestControlDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 
+	 DDX_Control(pDX, IDC_SLIDER_FRAME_SEL, m_frame_slider);
 }
 
 
@@ -39,10 +40,12 @@ BEGIN_MESSAGE_MAP(TestControlDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_SINGLE, &TestControlDlg::on_1view)
 	ON_BN_CLICKED(IDC_BUTTON_DOUBLE, &TestControlDlg::On_2view)
 	ON_BN_CLICKED(IDC_BUTTON_INTERACTIVE_RECORD_REVIEW_PLAY, &TestControlDlg::on_play_record)
-	ON_BN_CLICKED(INTERACTIVE_RECORD_REVIEW_NEXT, &TestControlDlg::on_stop_record_play)
-	ON_BN_CLICKED(INTERACTIVE_RECORD_REVIEW_PREV, &TestControlDlg::on_next_frame)
+	ON_BN_CLICKED(INTERACTIVE_RECORD_REVIEW_NEXT, &TestControlDlg::on_next_frame)
+	ON_BN_CLICKED(INTERACTIVE_RECORD_REVIEW_PREV, &TestControlDlg::OnBnClickedButtonPrevFrame)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_SLIDER_FRAME_SEL, &TestControlDlg::OnNMCustomdrawSliderFrameSel)
 	ON_WM_TIMER()
+	ON_BN_CLICKED(IDC_BUTTON1, &TestControlDlg::OnBnClickedButton1)
+	ON_BN_CLICKED(IDC_BUTTON_INTERACTIVE_RECORD_REVIEW_STOP, &TestControlDlg::on_stop_record_play)
 END_MESSAGE_MAP()
 
 void TestControlDlg::setVideoSourceMgr(VideoSourceMgr *mgr)
@@ -61,10 +64,13 @@ void TestControlDlg::OnBackToNoInteractive()
 
 
 void TestControlDlg::OnStartRecording()
-{
+{		
+		
+	videoMgr->start_Recording();
 
-		videoMgr->start_Recording("test_record_1.bin");
-		SetTimer(MY_TIMER_ID, 5000,NULL);
+		
+
+
 
 }
 
@@ -105,17 +111,9 @@ void TestControlDlg::On_2view()
 {
 	videoMgr->switch_view_mode(SPEAKER_TWO_VIEW);
 }
-void TestControlDlg::on_frame_freeze(FreezeFrame freezeframe) {
-
-	msg_freeze_frame = freezeframe;
-	videoMgr->display_freeze_frame(&msg_freeze_frame);
-	PostMessage(WM_ON_FREEZE_FRAME, WM_ON_FREEZE_FRAME, (LPARAM)&msg_freeze_frame);
-}
-
 
 void TestControlDlg::on_play_record()
 {
-	
 	
 	videoMgr->start_Playing_Record(0);
 }
@@ -171,19 +169,42 @@ void TestControlDlg::OnNMCustomdrawSliderFrameSel(NMHDR *pNMHDR, LRESULT *pResul
 
 void TestControlDlg::OnBnClickedButtonFreezeFrameReview()
 {
-	videoMgr->set_interactive_state(FREEZE_FRAME_STATE);
+	
+	videoMgr->freeze_one_frame();
 }
 
 void TestControlDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	if (nIDEvent == MY_TIMER_ID)
 	{
-		// perform your one-shot task here
-		videoMgr->stop_Recording();
-		frame_num = videoMgr->load_Review_Record("test_record_1.bin");
-		m_frame_slider.SetRange(0, frame_num);
+	
+		
 		KillTimer(MY_TIMER_ID); // stop the timer
 	}
 
 	CDialogEx::OnTimer(nIDEvent);
 }
+
+void TestControlDlg::OnBnClickedButton1()
+{
+	show_sub_view = !show_sub_view;
+	videoMgr->show_sub_views(show_sub_view);
+}
+
+void TestControlDlg::on_frame_freezed(FreezeFrame freezeframe)
+{
+
+}
+void TestControlDlg::on_video_record_loaded(int frame_number)
+{
+	m_frame_slider.SetRange(0, frame_number);
+}
+void TestControlDlg::on_frame_changed(int frame_index)
+{
+
+}
+void TestControlDlg::on_video_play_to_end(int frame_index)
+{
+
+}
+

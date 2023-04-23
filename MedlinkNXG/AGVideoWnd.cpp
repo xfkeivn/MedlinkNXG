@@ -1,12 +1,22 @@
 // AGVideoWnd.cpp : implement file
-#include "pch.h"
+#include "stdafx.h"
 #include "AGVideoWnd.h"
 #include <Gdiplus.h>
 #include "VideoSourceMgr.h"
 #include "FrameRecorder.h"
+#include "CustomMessages.h"
 using namespace std;
 #include <vector>
 #define IDD_PLAY_TIMER 1001010
+#define IDD_RECORDING_5S 1001011
+#include <filesystem>
+namespace fs = std::experimental::filesystem;
+
+#define WM_PARAM_RECORD_LOADED 1
+#define WM_PARAM_REVIEW_FRAME_CHANGED 2
+#define WM_PARAM_REVIEW_FRAME_TO_END 3
+#define WM_PARAM_FREEZE_FRAME_TAKEN_AND_LOAED 4
+
 
 IMPLEMENT_DYNAMIC(CAGInfoWnd, CWnd)
 
@@ -188,9 +198,6 @@ CAGVideoWnd::~CAGVideoWnd()
 {
 	m_imgBackGround.DeleteImageList();
 }
-#define ON_REGISTERED_MESSAGE(message, memberFxn) \
-    { message, 0, 0, 0, AfxSig_lwl, \
-        (AFX_PMSG)(AFX_PMSGW)(LRESULT (AFX_MSG_CALL CWnd::*)(WPARAM, LPARAM))(memberFxn) },
 
 BEGIN_MESSAGE_MAP(CAGVideoWnd, CWnd)
 	ON_WM_ERASEBKGND()
@@ -298,11 +305,17 @@ void CAGVideoWnd::OnLButtonDown(UINT nFlags, CPoint point)
 	CWnd::OnLButtonDown(nFlags, point);
 	setActive(TRUE);
 	
-	m_bDragging = TRUE;
-	m_ptDragStart = point;
 
-	SetCapture();
-	SetWindowPos(&wndTop, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+	if (m_videoSource->canDragAndDrop())
+	{
+		m_bDragging = TRUE;
+		m_ptDragStart = point;
+
+		SetCapture();
+		SetWindowPos(&wndTop, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+	}
+
+
 
 
 	
@@ -312,7 +325,7 @@ void CAGVideoWnd::OnLButtonDown(UINT nFlags, CPoint point)
 void CAGVideoWnd::OnMouseMove(UINT nFlags, CPoint point)
 {
 	// The user is moving the mouse on the window
-	if (m_bDragging)
+	if (m_bDragging && m_videoSource->canDragAndDrop())
 	{
 		// Calculate the new position of the window
 		
@@ -360,7 +373,7 @@ void CAGVideoWnd::OnLButtonUp(UINT nFlags, CPoint point)
 	::SendMessage(GetParent()->GetSafeHwnd(), WM_LBUTTON_UP_WND, (WPARAM)point.x, (LPARAM)point.y);
 	CWnd::OnLButtonDown(nFlags, point);
 	setActive(FALSE);
-	if (m_bDragging)
+	if (m_bDragging && m_videoSource->canDragAndDrop())
 	{
 		// Move the window to the new position
 		ReleaseCapture();
@@ -454,22 +467,6 @@ void CAGVideoWnd::setActive(BOOL bActive)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void CapturedSourceVideoWnd::SetLocalVideoSource(CapturedVideoSource * localvideosource)
 {
 	m_local_video_source = localvideosource;
@@ -484,7 +481,7 @@ BEGIN_MESSAGE_MAP (CVideoPlayerWnd, CWnd)
 	ON_WM_CREATE()
 	ON_WM_SIZE()
 	ON_WM_TIMER()
-
+	ON_MESSAGE(WM_VIDEO_PLAYER_NOTIFCATION, on_video_player_notification)
 
 END_MESSAGE_MAP()
 
@@ -493,14 +490,33 @@ void CVideoPlayerWnd::OnSize(UINT id, int w, int h)
 	CWnd::OnSize(id, w, h);
 }
 
+
 void CVideoPlayerWnd::OnTimer(UINT_PTR nIDEvent)
 {
 	if (nIDEvent == IDD_PLAY_TIMER)
 	{
 		next_Frame();
 	}
+	if (nIDEvent == IDD_RECORDING_5S)
+	{
+		
+		KillTimer(IDD_RECORDING_5S);
+		if (m_videoSourcceMgr->get_interactive_state() == VIDEO_RECORDING_STATE)
+		{
+			this->stop_Recording();
+			m_videoSourcceMgr->set_interactive_state(VIDEO_RECORD_REVIEW_STATE);
+			m_current_record_frame_number = load_Review_Record(RECORDING_FILE_NAME);
+			current_display_frame_index = 0;
+			::PostMessage(this->GetSafeHwnd(), WM_VIDEO_PLAYER_NOTIFCATION, WM_PARAM_RECORD_LOADED, NULL);
+			Invalidate();
+		}
+		
+	}
+}
+void CVideoPlayerWnd::setVideoSourceMgr(VideoSourceMgr *mgr)
+{
+	m_videoSourcceMgr = mgr;
 
-	
 }
 
 int CVideoPlayerWnd::OnCreate(LPCREATESTRUCT lpCreateStruct) {
@@ -516,11 +532,11 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 }
 	void CVideoPlayerWnd::OnPaint() {
 		CWnd::OnPaint();
-		if (m_main_view_state == VIDEO_REVIEW_STATE)
+		if (m_videoSourcceMgr->get_interactive_state() == VIDEO_RECORD_REVIEW_STATE)
 		{
 			m_current_capture_main_source->getFrameRecorder()->display_frame(current_display_frame_index, this);
 		}
-		if (m_main_view_state == FREEZE_FRAME_STATE && m_current_freeze_frame!=nullptr)
+		if (m_videoSourcceMgr->get_interactive_state() == FREEZE_FRAME_REVIEW_STATE && m_current_freeze_frame!=nullptr)
 		{
 
 			m_current_capture_main_source->getFrameRecorder()->display_frame(m_current_freeze_frame, this);
@@ -531,12 +547,13 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 
 	 void CVideoPlayerWnd::start_Recording(string record_file)
 	 {
-		 if (m_current_capture_main_source != nullptr)
+		 if ( m_current_capture_main_source != nullptr)
 		 {
 			 FileHeader header;
 			 header.frame_width = m_current_capture_main_source->videoInfoHeader.bmiHeader.biWidth;
 			 header.frame_heigth = m_current_capture_main_source->videoInfoHeader.bmiHeader.biHeight;
 			 m_current_capture_main_source->getFrameRecorder()->start_recording(header, record_file);
+			 SetTimer(IDD_RECORDING_5S, 5000,NULL);
 		 }
 	 }
 	 void CVideoPlayerWnd::stop_Recording()
@@ -568,12 +585,8 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 					 SetTimer(IDD_PLAY_TIMER, average_fs_ms, NULL);
 					 m_isPlaying = true;
 					 m_isPaused = false;
-				 }
-					
-				 
+				 }	 
 			 }
-		
-		
 	 }
 
 	 void CVideoPlayerWnd::pause_Playing_Record()
@@ -594,7 +607,13 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 		 if (current_display_frame_index < current_display_video_total_frame_number - 1)
 		 {
 			 current_display_frame_index++;
+			 ::PostMessage(this->GetSafeHwnd(), WM_VIDEO_PLAYER_NOTIFCATION, WM_PARAM_REVIEW_FRAME_CHANGED, NULL);
 			 Invalidate();
+		 }
+		 else
+		 {
+			 pause_Playing_Record();
+			 ::PostMessage(this->GetSafeHwnd(), WM_VIDEO_PLAYER_NOTIFCATION, WM_PARAM_REVIEW_FRAME_TO_END, NULL);
 		 }
 			 
 		 
@@ -606,6 +625,7 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 		 if (current_display_frame_index > 0)
 		 {
 			 current_display_frame_index--;
+			 ::PostMessage(this->GetSafeHwnd(), WM_VIDEO_PLAYER_NOTIFCATION, WM_PARAM_REVIEW_FRAME_CHANGED, NULL);
 			 Invalidate();
 		 }
 	 }
@@ -615,6 +635,7 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 		 if (frame_index <= current_display_video_total_frame_number - 1 && frame_index >= 0)
 		 {
 			 current_display_frame_index = frame_index;
+			 ::PostMessage(this->GetSafeHwnd(), WM_VIDEO_PLAYER_NOTIFCATION, WM_PARAM_REVIEW_FRAME_CHANGED, NULL);
 			 Invalidate();
 		 }
 	 }
@@ -627,20 +648,81 @@ void CVideoPlayerWnd::display_freeze_frame(FreezeFrame *freezeframe)
 			 m_current_capture_main_source->getFrameRecorder()->freeze_frame();
 		 }
 	 }
-	 vector<FreezeFrame>  CVideoPlayerWnd::get_FreezeFrames()
+
+	 void CVideoPlayerWnd::on_frame_freezed(FreezeFrame *freezeframe)
 	 {
-		 if (m_current_capture_main_source != nullptr)
+		 //PostMessage(WM_ON_FREEZE_FRAME, WM_ON_FREEZE_FRAME, NULL);
+
+		 if (m_videoSourcceMgr->get_interactive_state() == FREEZING_FRAME_STATE)
 		 {
-			 return m_current_capture_main_source->getFrameRecorder()->get_FreezeFrames();
+			 m_videoSourcceMgr->set_interactive_state(FREEZE_FRAME_REVIEW_STATE);
+		
+			 m_current_freeze_frame = freezeframe;
+			 display_freeze_frame(freezeframe);
+			 
+			 ::PostMessage(this->GetSafeHwnd(), WM_VIDEO_PLAYER_NOTIFCATION, WM_PARAM_FREEZE_FRAME_TAKEN_AND_LOAED, NULL);
 		 }
-		 vector<FreezeFrame> noneframes;
-		 return noneframes;
+		 
 		
 	 }
 
-
-	 void CVideoPlayerWnd::set_Interactive_State(InteractiveState state)
+	LRESULT CVideoPlayerWnd::on_video_player_notification(WPARAM wParam, LPARAM lParam)
 	 {
-		 m_main_view_state = state;
+		 switch (wParam)
+		 {
+		 case WM_PARAM_FREEZE_FRAME_TAKEN_AND_LOAED:
+		 {
+			 
+			 for each (auto observer in m_observers)
+			 {
+				
+				 observer->on_frame_freezed(*m_current_freeze_frame);
 
+			 }
+			 break;
+		 }
+		 case WM_PARAM_RECORD_LOADED:
+		 {
+
+			 for each (auto observer in m_observers)
+			 {
+				 
+				 observer->on_video_record_loaded(this->get_current_record_frames());
+
+			 }
+			 break;
+		 }
+		 case WM_PARAM_REVIEW_FRAME_CHANGED:
+		 {
+
+			 for each (auto observer in m_observers)
+			 {
+
+				 observer->on_frame_changed(this->current_display_frame_index);
+
+			 }
+			 break;
+		 }
+		 case WM_PARAM_REVIEW_FRAME_TO_END:
+		 {
+
+			 for each (auto observer in m_observers)
+			 {
+
+				 observer->on_video_play_to_end(this->current_display_frame_index);
+
+			 }
+			 break;
+		 }
+
+		 default:
+			 break;
+		 }
+
+		 return 0;
 	 }
+
+
+
+
+
