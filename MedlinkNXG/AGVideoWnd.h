@@ -30,7 +30,6 @@ public:
 	void SetAudioLossRate(UINT lossRate);
 	void SetAudioDelay(UINT delay);
 	void SetVideoDelay(UINT delay);
-
 	void Reset();
 
 protected:
@@ -116,7 +115,6 @@ public:
 	void SetLocalVideoSource(CapturedVideoSource * localvideosource);
 
 };
-class FrameRecorder;
 class CapturedVideoSource;
 class VideoSourceMgr;
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "stdafx.h"
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -14,7 +14,6 @@ public:
 
 }FileHeader;
 class CWnd;
-
 typedef struct __FreezeFrame
 {
 	DWORD time_tick;
@@ -23,7 +22,6 @@ typedef struct __FreezeFrame
 	int width;
 	int heigth;
 }FreezeFrame;
-
 
 
 class VideoSource;

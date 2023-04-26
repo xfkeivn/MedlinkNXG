@@ -1,3 +1,4 @@
+#include "stdafx.h"
 #include "pch.h"
 #include "VideoSourceMgr.h"
 #include "AGVideoWnd.h"
@@ -7,6 +8,8 @@
 #include "resource.h"
 #include "FrameRecorder.h"
 #include <filesystem>
+#include "TestControlDlg.h"
+TestControlDlg test_dlg;
 namespace fs = std::experimental::filesystem;
 
 extern std::shared_ptr<spdlog::logger> logger;
@@ -792,4 +795,22 @@ void VideoSourceMgr::show_sub_views(bool show)
 	pack_windows();
 
 	
+}
+
+int VideoSourceMgr::get_current_main_view_count() {
+	return std::count_if(m_video_sources.begin(), m_video_sources.end(), [](VideoSource* vs) { return vs->getViewType() == MAIN_VIEW; });
+}
+int VideoSourceMgr::get_current_sub_view_count() {
+	return std::count_if(m_video_sources.begin(), m_video_sources.end(), [](VideoSource* vs) { return vs->getViewType() == SUB_VIEW; });
+}
+
+vector<VideoSource *> VideoSourceMgr::get_main_views() {
+	vector<VideoSource*> dest;
+	std::copy_if(m_video_sources.begin(), m_video_sources.end(), std::back_inserter(dest), [](VideoSource* vs) { return vs->getViewType() == MAIN_VIEW; });
+	return dest;
+}
+vector<VideoSource *> VideoSourceMgr::get_sub_views() {
+	vector<VideoSource*> dest;
+	std::copy_if(m_video_sources.begin(), m_video_sources.end(), std::back_inserter(dest), [](VideoSource* vs) { return vs->getViewType() == SUB_VIEW; });
+	return dest;
 }

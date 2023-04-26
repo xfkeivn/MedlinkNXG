@@ -1,3 +1,4 @@
+#include "stdafx.h"
 #include "FrameRecorder.h"
 #include <iostream>
 #include <cstdio>

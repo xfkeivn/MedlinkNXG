@@ -1,7 +1,6 @@
 #pragma once
-#include "stdafx.h"
+
 #include "AGVideoWnd.h"
-#include "TestControlDlg.h"
 #include "AGDShowVideoCapture.h"
 #include <string>
 class CWnd;
@@ -15,6 +14,16 @@ using namespace std;
 // ONE_VIEW is the main area of speaker has only one window, 
 // TWO_VIEW is the main area has 2 windows
 // GALLERY_VIEW is the main area has 4 slitted windows
+
+#define CUSTOM_CAPTURE_USER_ID_START		10000
+
+typedef enum {
+	NO_INTERACTIVE,
+	FREEZING_FRAME_STATE,
+	FREEZE_FRAME_REVIEW_STATE,
+	VIDEO_RECORDING_STATE,
+	VIDEO_RECORD_REVIEW_STATE
+}InteractiveState;
 
 typedef enum 
 {
@@ -43,6 +52,8 @@ typedef enum _CaptureType
 }CaptureType;
 
 class CAGVideoWnd;
+
+
 
 
 class VideoSource
@@ -214,23 +225,11 @@ private:
 	bool isHost();
 
 
-	int get_current_main_view_count() {
-		return std::count_if(m_video_sources.begin(), m_video_sources.end(), [](VideoSource* vs) { return vs->getViewType() == MAIN_VIEW; });
-	}
-	int get_current_sub_view_count() {
-		return std::count_if(m_video_sources.begin(), m_video_sources.end(), [](VideoSource* vs) { return vs->getViewType() == SUB_VIEW; });
-	}
+	int get_current_main_view_count();
+	int get_current_sub_view_count();
 
-	vector<VideoSource *> get_main_views() {
-		vector<VideoSource*> dest;
-		std::copy_if(m_video_sources.begin(), m_video_sources.end(), std::back_inserter(dest), [](VideoSource* vs) { return vs->getViewType() == MAIN_VIEW; });
-		return dest;
-	}
-	vector<VideoSource *> get_sub_views() {
-		vector<VideoSource*> dest;
-		std::copy_if(m_video_sources.begin(), m_video_sources.end(), std::back_inserter(dest), [](VideoSource* vs) { return vs->getViewType() == SUB_VIEW; });
-		return dest;
-	}
+	vector<VideoSource *> get_main_views();
+	vector<VideoSource *> get_sub_views();
 private:
 	vector < VideoSource*> m_video_sources;
 	vector < IVideoMgrObserver *> m_window_mgr_observers;
@@ -245,7 +244,7 @@ private:
 	vector<CRect> m_main_window_rects;
 	//only for the client camera video
 	AgoraLocalVideoSource *m_local_video_source;
-	TestControlDlg test_dlg;
+	
 	double h_percentage = 0.85;
 	int sub_view_max_width = 200;
 	int rect_line_offset = 5;

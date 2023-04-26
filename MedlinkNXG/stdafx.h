@@ -176,13 +176,7 @@ unsigned int generateUid();
 #endif
 
 
-typedef enum {
-	NO_INTERACTIVE,
-	FREEZING_FRAME_STATE,
-	FREEZE_FRAME_REVIEW_STATE,
-	VIDEO_RECORDING_STATE,
-	VIDEO_RECORD_REVIEW_STATE
-}InteractiveState;
 
-#define CUSTOM_CAPTURE_USER_ID_START		10000
+
+
 #define RECORDING_FILE_NAME			"Recording.bin"
